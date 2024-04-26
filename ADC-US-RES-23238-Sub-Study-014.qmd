@@ -1,0 +1,419 @@
+---
+title: "ADC-US-RES-23238 Sub Study 014(SR378) `r params$title2`"
+description: "DVT Libre3 Sharp Tip Deflection Tolerance"
+author: "Alvin, Lin"
+date: "`r Sys.Date()`"
+date-format: full
+format:
+   html:
+     theme: flatly
+     embed-resources: true
+toc: true
+toc-depth: 3
+toc-location: left
+execute:
+  echo: false
+  warning: false 
+  keep-md: true
+params:
+    analysis : TRUE
+    plot: FALSE
+    type: "906"
+    title1: "Profile Plot"
+    title2: "ESA Index"
+---
+
+<!-- EDC \\wf00168p.oneabbott.com\data1\CDM\ADC-US-RES-23238\OpenClinicaExtract\Current\014 -->
+
+<!-- UUU \\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\CDM_23238\014 -->
+
+<!-- Study Requests \\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\Study Requests\No Final Report -->
+
+<!-- DMP \\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\CDM\Study_Binder\Data_Management_Plan -->
+
+`r if(params$analysis){htmltools::a("Study Request",href = gsub("\\\\", "/", r"(https://abbott-my.sharepoint.com/:b:/r/personal/alvin_lin_abbott_com/Documents/InHouse%20Study%20Request/014_SR378%20L3%20Sharp%20Tip%20Performance%20Clinical%20Request.pdf?csf=1&web=1&e=JcFJQp)"))}`
+
+```{r}
+#| label: Libaray Packages 
+#| message: false
+library(tidyverse)
+library(reactable)
+library(DescTools)
+library(haven)
+library(janitor)
+library(reactablefmtr)
+library(htmltools)
+library(UUU)
+library(pracma)
+library(fs)
+library(highcharter)
+library(vroom)
+library(gt)
+```
+
+```{r}
+#| label: Find all events, glucPlucs csv
+#| eval: false
+file_list <- dir_ls(gsub("\\\\", "/", r"(C:\Project\ADC-US-RES-23238-Sub-Study-014\Output_2024-04-23-15-56\outputs)"),recurse = T,glob = "*events.csv|*anaPlus.csv")
+```
+
+```{r}
+#| label: Filter events.csv, anaPlus.csv freestyle.csv
+#| eval: false
+events_path <- filter_path(file_list)[[1]]
+anaPlus_path <- filter_path(file_list,filter_text = "LifeCountTimeStamp")[[5]]
+free_path <- filter_path(file_path = dir_ls(gsub("\\\\", "/", r"(\\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\CDM_23238\014\AUU)"),recurse = T,glob = "*freestyle.csv") )[[4]]
+```
+
+```{r}
+#| label: Output UUU.rds
+#| warning: false
+#| eval: false
+saveRDS(mobi_anaPlus(events = events_path, ana = anaPlus_path) ,gsub("\\\\", "/", r"(\\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\Statistics\Programs\Outputs\SE014\AL\UUU.rds)"))
+```
+
+```{r}
+#| label: Import UUU.rds
+UUU <- readRDS(gsub("\\\\", "/", r"(\\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\Statistics\Programs\Outputs\SE014\AL\UUU.rds)"))
+```
+
+```{r}
+#| label: Output BG.rds
+#| warning: false
+#| eval: false
+saveRDS(freestyle(freestyle_path = free_path) |> 
+        mutate(`Subject ID` = case_when(str_length(`Subject ID`) != 4 ~ str_sub(`Subject ID`,3,6),
+                                        .default = `Subject ID`)) |> 
+        arrange(`Subject ID`),gsub("\\\\", "/", r"(\\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\Statistics\Programs\Outputs\SE014\AL\BG.rds)"))
+```
+
+```{r}
+#| label: Import BG.rds
+BG <- readRDS(gsub("\\\\", "/", r"(\\oneabbott.com\dept\ADC\Technical_OPS\Clinical_Affairs\Clinical Study Files\Sensor Systems\ADC-US-RES-23238_InHouse Sensor\Statistics\Programs\Outputs\SE014\AL\BG.rds)"))
+```
+
+```{r eval = params$analysis}
+#| label: Paired BG
+Ap <- UUU |> 
+      select(!Path) |> 
+      dplyr::mutate(eTime = as.numeric(difftime(`Date Time`,first(`Date Time`),units = "hours")),.by = c(`Subject ID`,`Condition ID`,`Sensor Serial Number`)) |>
+      # Historic Glucose and Current Glucose
+      filter(Type %in% c("905","906")) |>
+      # Remove Extreme ANA readings < 40 or > 500
+      filter(between(ANA,40,400)) |> 
+      group_split(`Subject ID`,`Condition ID`,`Sensor Serial Number`,Type) |>
+      # New anonymous function
+      map(\(df) PairBg(sensor_data = df,apol = F),.progress = T) |>
+      # formula syntax
+      # map(~ PAIRBG_fun(data = .x)) %>%
+      list_rbind() |> 
+      # Row-wise Calculation
+      dplyr::mutate(
+            # Reference glucose values < 100 mg/dL
+            `Difference(mg/dL)` = ANA - Reference,
+            `Absolute Difference(mg/dL)` = abs(`Difference(mg/dL)`),
+            # Reference glucose values >= 100 mg/dL
+            `Relative Difference(%)` = (`Difference(mg/dL)`/Reference)*100,
+            `Absolute Relative Difference(%)` = abs(`Relative Difference(%)`),
+             s_immediate = ANA/Reference
+             )
+```
+
+`r if(params$analysis){knitr::asis_output("# **ESA Index**")}`
+```{r eval = params$analysis}
+#| label: Get esa median
+#| column: body-outset
+esa_median <- Ap |> 
+              # Historic Glucose
+              filter(Type == "906") |> 
+              # Get median based on eTime between 10 hours and 120 hours
+              filter(between(eTime,11,121)) |> 
+              group_by(`Subject ID`,`Condition ID`,`Sensor Serial Number`) |> 
+              summarise(s_median = median(s_immediate, na.rm = T),
+                        n = sum(!is.na(s_immediate)),.groups = "drop")
+```
+ 
+```{r eval = params$analysis}
+#| label: Get esa interpolate data
+esa_interpolate <- Ap |> 
+                   filter(between(eTime,1,9)) |>
+                   # Historic Glucose
+                   filter(Type == "906") |>
+                   left_join(
+                      esa_median,
+                      by = join_by("Subject ID","Condition ID","Sensor Serial Number")
+                    ) |> 
+                    mutate(s_norm = s_immediate/s_median,
+                           .by = c(`Subject ID`,`Condition ID`,`Sensor Serial Number`)) |>
+                    # Filter missing values for s_norm
+                    filter(!is.na(s_norm))
+```
+
+```{r eval = params$analysis}
+#| label: linear_interpolate function
+linear_interpolate <- function(data) { 
+     
+     if (nrow(data) != 1) {
+             # Create Empty list for x(time) y(s_norminterp)
+            x <- vector("list")
+            y <- vector("list")
+            
+            for (i in 1:(nrow(data)-1)) {
+              j <- 0  
+              while(data$eTime[i]+(1/60)*j <= data$eTime[i+1]) {
+                 x <- append(x,approx(x = c(data$eTime[i],data$eTime[i+1]), 
+                                      y = c(data$s_norm[i],data$s_norm[i+1]), 
+                                      xout = data$eTime[i]+(1/60)*j)$x)
+                 y <- append(y,approx(x = c(data$eTime[i],data$eTime[i+1]), 
+                                      y = c(data$s_norm[i],data$s_norm[i+1]), 
+                                      xout = data$eTime[i]+(1/60)*j)$y)
+                 j <- j + 1
+              }
+            }
+          # Add Subject ID
+          data |> 
+            select(`Subject ID`,`Condition ID`,`Sensor Serial Number`,s_median) |> 
+            slice(1) |> 
+            bind_cols(
+                     enframe(x) |> 
+                     unnest(value) |> 
+                     select(eTime = value) |> 
+                      bind_cols(
+                            enframe(y) |> 
+                            unnest(value) |> 
+                            select(s_norm = value)) |> 
+                       # Add last observation
+                     add_row(eTime = data |> slice(n()) |> pull(eTime),
+                             s_norm = data |> slice(n()) |> pull(s_norm)) 
+                    )
+     } else {
+        # One point only
+         tibble(eTime = 0, s_norm = 0)
+     }
+}
+```
+
+```{r eval = params$analysis}
+#| label: Nest Data
+esa_area <- function(interpolate) {
+UUU %>% 
+    distinct(`Subject ID`,`Condition ID`,`Sensor Serial Number`) %>% 
+    left_join(
+      esa_median,by = join_by(`Subject ID`,`Condition ID`,`Sensor Serial Number`)
+    ) %>%
+   left_join(
+     esa_interpolate %>%
+            distinct(`Subject ID`,`Condition ID`,`Sensor Serial Number`) %>%
+            bind_cols(
+              esa_interpolate %>% 
+              group_split(`Subject ID`,`Condition ID`,`Sensor Serial Number`) %>% 
+              {if (interpolate == T) map(.,\(df) linear_interpolate(df),.progress = T) else . } %>% 
+              # Only sum up the area when s_normlnterp < 1
+              map(\(df) df |> filter(s_norm < 1))  %>% 
+              map(\(df) trapz(x = df$eTime, y = (df$s_norm) - 1)) %>% 
+              enframe(value = "ESA Area 8hrs") %>% 
+              unnest(`ESA Area 8hrs`) %>% 
+              select(!name)
+            ) , 
+          by = join_by("Subject ID","Condition ID","Sensor Serial Number")) %>% 
+            mutate(`ESA Categ` = fct_case_when(
+                       `ESA Area 8hrs`<= -3 ~ "Severe",
+                      -3 < `ESA Area 8hrs` & `ESA Area 8hrs` <= -2 ~ "Moderate",
+                      -2 < `ESA Area 8hrs` & `ESA Area 8hrs` <= -1 ~ "Minor",
+                     - 1 < `ESA Area 8hrs` & `ESA Area 8hrs` <= 0 ~ "None",
+                                               TRUE ~ "NaN")) 
+}
+```
+
+```{r eval = params$analysis}
+#| label: Summary Table for ESA Index
+#| column: body-outset
+esa_area(interpolate = F) |> 
+  # Create Lot
+  mutate(Lot = str_sub(`Condition ID`,3,3)) |> 
+  tabyl(Lot,`ESA Categ`) |>
+  adorn_totals(c("row","col")) |> 
+  adorn_percentages("row") |> 
+  adorn_pct_formatting(digits = 2) |> 
+  adorn_ns() |> 
+  mutate(Total = str_remove_all(Total,"100.00%|\\(|\\)")) |>
+  # adorn_totals(c("row")) |>  
+  # adorn_pct_formatting(digits = 2) |>  
+  rename_with(~ str_to_sentence(.x),contains(c("n","percent"))) |> 
+  gt() |>
+  cols_align(align = "center",columns = everything()) |>
+  opt_stylize(style = 6, color = "blue") |>
+  tab_header(title = md("**ESA Index**")) |> 
+  tab_source_note(
+     source_note = md("A: Libre3 applicators built with Sharps binned for tip -30 to -40 microns deflection")) |>
+  tab_source_note(
+     source_note = md("B: Libre3 applicators built with Sharps binned for tip -20 to -30 microns deflection")) |>
+  tab_source_note(
+     source_note = md("C: Libre3 applicators built with Sharps binned for tip +20 to +30 microns deflection ")) |> 
+  tab_source_note(
+     source_note = md("D: Libre3 applicators built with Sharps binned for tip +30 to +40 microns deflection "))
+```
+
+```{r eval = params$analysis}
+#| label: ESA summary plot
+#| fig-align: center
+esa_area(interpolate = F) |>
+  # Create Lot
+  mutate(Lot = str_sub(`Condition ID`,3,3)) |>
+  filter(`ESA Categ` != "NaN") |> 
+  group_by(Lot) |> 
+  arrange(Lot,`ESA Area 8hrs`) |>
+  mutate(`% of Sensors` = row_number()/n()) |>
+  ungroup() |> 
+  ggplot(aes(x = `% of Sensors`, y = `ESA Area 8hrs`, color = Lot)) +
+  geom_point() +
+  geom_line() +
+  scale_y_reverse("ESA Area",limits = c(0,-5)) +
+  scale_x_continuous(labels = scales::label_percent(),
+                     breaks = seq(0,1,0.2)) +
+  theme_bw() +
+  labs(title = md("ESA Area 1~8 Hours")) +
+  theme(panel.grid.minor.y = element_blank(),legend.position = "bottom",plot.title = element_text(hjust = 0.5)) +
+   annotate(
+    geom = "label", x = 0.865, y = -3.5,
+    label = "Severe",
+    hjust = "left", color = "red"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -5, xend = 0.85, yend = -3, color = "red",
+    arrow = arrow(type = "closed")
+  ) +
+   annotate(
+    geom = "label", x = 0.865, y = -2.5,
+    label = "Moderate",
+    hjust = "left", color = "orange"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -3, xend = 0.85, yend = -2, color = "orange",
+    arrow = arrow(type = "closed")
+  ) +
+    annotate(
+    geom = "label", x = 0.865, y = -1.5,
+    label = "Minor",
+    hjust = "left", color = "#99CFFF"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -2, xend = 0.85, yend = -1, color = "#99CFFF",
+    arrow = arrow(type = "closed")
+  ) +
+    annotate(
+    geom = "label", x = 0.88, y = -0.5,
+    label = "No ESA",
+    hjust = "left", color = "green"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 1, y = -1, xend = 1, yend = 0, color = "green",
+    arrow = arrow(type = "closed")
+  )
+```
+
+`r if(params$analysis){knitr::asis_output("# **Appendix**")}`
+```{r eval = params$analysis}
+#| label: Reactable data
+#| column: screen
+browsable(
+   tagList(
+    tags$button(
+      tagList(fontawesome::fa("download"), "Download as CSV"),
+      onclick = "Reactable.downloadDataCSV('esa', 'esa.csv')"
+    ),
+esa_area(interpolate = F) |> 
+   reactable(sortable = T,resizable = T,filterable = T,searchable = T,showPageSizeOptions = TRUE,
+             defaultColDef = colDef(align = "center",minWidth = 115),elementId = "esa",
+             columns = list(
+               s_median = colDef(format = colFormat(digits = 6)),
+               `ESA Area 8hrs` = colDef(format = colFormat(digits = 6))
+             )) |> 
+   add_title("List of ESA Index",align = "center")
+   )
+)
+```
+
+```{r eval = params$plot}
+#| label: Distinct Subject ID and Condition ID
+UD <- UUU |> 
+      distinct(`Subject ID`) |> 
+      pull()
+```
+
+```{r eval = params$plot}
+#| label: Profile plot function
+breakdown_type_plot <- function(Id, type, ...) {
+  highchart() %>%
+  # Add title
+  {if (type == "904") hc_title(.,text = str_c("Subject = ",Id, " Real-Time Glucose")) 
+   else if (type == "905") hc_title(.,text = str_c("Subject = ",Id, " Historic Glucose")) 
+   else hc_title(.,text = str_c("Subject = ",Id, " Current Glucose"))} %>% 
+  # continuous Sensor Data
+  hc_add_series(
+    # name = "Sensor Reading",
+    data = UUU %>%
+           filter(`Subject ID` == Id, Type == type) %>% 
+           {if (nrow(.) != 0) slice(.,seq(1,n(),5),.by = c(`Sensor Serial Number`)) else .} %>%
+           # 904 is Real-time glucose 906 is current glucose
+           mutate(Type = case_when(Type == "906" ~ "Current Glucose",
+                                   Type == "904" ~ "Real-Time Glucose",
+                                   .default = "Historic Glucose"),
+                  Lot = str_c(`Condition ID`,`Sensor Serial Number`, sep = "-")) %>%
+           arrange(`Date Time`),
+    type = "line",
+    hcaes(x = datetime_to_timestamp(`Date Time`), y = ANA, group = Lot)) %>%
+  # BG data 
+   hc_add_series(
+    name = "BG Reference",
+    data = BG %>%
+           filter(`Subject ID` == Id),
+    type = "scatter",
+    color = "#993300",
+    hcaes(x = datetime_to_timestamp(`BG Date Time`), y = Reference)) %>% 
+    # Add X label
+    hc_xAxis(title = list(text = "Date Time"),
+             type = "datetime", 
+             dateTimeLabelFormats = list(day = '%d %b %y')) %>%
+    # Add Y axis
+    hc_yAxis(title = list(text = "Glucose(mg/dl)")) %>%
+    # Change the size of marker
+    hc_plotOptions(scatter = list(
+                            marker = list(radius = 1.9, symbol = "circle"))) %>% 
+    # Change the format of point
+    hc_tooltip(pointFormat = '{point.x: %Y-%m-%d %H:%M:%S} {point.y:.1f} ')  %>% 
+    # Add zoom in function
+    hc_chart(zoomType = "xy") %>% 
+    # Add navigator
+    hc_navigator(enabled = TRUE)
+    # {if (UUU %>%
+    #      filter(Type != "SENSOR_STARTED (58)") %>%
+    #      filter(`Subject ID` == Id) %>% 
+    #      nrow() != 0) 
+    #      hc_navigator(.,enabled = TRUE) else .}  %>%
+    # {if (UUU %>%
+    #      filter(Type != "SENSOR_STARTED (58)") %>%
+    #      filter(`Subject ID` == Id) %>% 
+    #      nrow() == 0) 
+    #      hc_navigator(.,enabled = TRUE,series = list(color = "white")) else .} 
+}
+```
+
+```{r}
+#| eval: false
+breakdown_type_plot(Id = "0363", type = "906")
+```
+
+```{r eval = params$plot}
+#| label: For Loop Plots
+#| column: screen
+plots <- list()
+for (i in 22:42){
+  plots[[i]] <- breakdown_type_plot(Id = UD[i],type = params$type)
+}
+htmltools::tagList(plots)
+```

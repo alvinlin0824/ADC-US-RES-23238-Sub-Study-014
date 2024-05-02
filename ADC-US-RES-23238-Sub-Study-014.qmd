@@ -16,7 +16,7 @@ execute:
   warning: false 
   keep-md: true
 params:
-    analysis : TRUE
+    analysis: TRUE
     plot: FALSE
     type: "906"
     title1: "Profile Plot"
@@ -101,12 +101,12 @@ Ap <- UUU |>
       filter(Type %in% c("905","906")) |>
       # Remove Extreme ANA readings < 40 or > 500
       filter(between(ANA,40,400)) |> 
-      group_split(`Subject ID`,`Condition ID`,`Sensor Serial Number`,Type) |>
+      group_split(`Subject ID`,`Condition ID`,`Sensor Serial Number`,Type) |> 
       # New anonymous function
       map(\(df) PairBg(sensor_data = df,apol = F),.progress = T) |>
       # formula syntax
       # map(~ PAIRBG_fun(data = .x)) %>%
-      list_rbind() |> 
+      list_rbind() |>
       # Row-wise Calculation
       dplyr::mutate(
             # Reference glucose values < 100 mg/dL

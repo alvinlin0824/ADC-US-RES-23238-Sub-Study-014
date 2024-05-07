@@ -146,7 +146,8 @@ esa_interpolate <- Ap |>
                     mutate(s_norm = s_immediate/s_median,
                            .by = c(`Subject ID`,`Condition ID`,`Sensor Serial Number`)) |>
                     # Filter missing values for s_norm
-                    filter(!is.na(s_norm))
+                    filter(!is.na(s_norm)) |> 
+                    filter(s_norm < 1)
 ```
 
 ```{r eval = params$analysis}
@@ -209,7 +210,7 @@ UUU %>%
               group_split(`Subject ID`,`Condition ID`,`Sensor Serial Number`) %>% 
               {if (interpolate == T) map(.,\(df) linear_interpolate(df),.progress = T) else . } %>% 
               # Only sum up the area when s_normlnterp < 1
-              map(\(df) df |> filter(s_norm < 1))  %>% 
+              # map(\(df) df |> filter(s_norm < 1))  %>% 
               map(\(df) trapz(x = df$eTime, y = (df$s_norm) - 1)) %>% 
               enframe(value = "ESA Area 8hrs") %>% 
               unnest(`ESA Area 8hrs`) %>% 

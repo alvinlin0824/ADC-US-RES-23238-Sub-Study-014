@@ -269,7 +269,7 @@ run;
 proc print data = esa_index(drop = Lot) noobs label;
 label subject = "Subject"
       condition_id = "Condition ID"
-	  snr = "Sensor Serail Number"
+	  snr = "Sensor Serial Number"
 	  s_median = "Median Sensitivity";
 format Category $category.;
 run;

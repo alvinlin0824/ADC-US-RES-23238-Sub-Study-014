@@ -256,6 +256,67 @@ esa_area(interpolate = F) |>
 ```
 
 ```{r eval = params$analysis}
+#| label: Josh ESA plot
+#| fig-align: center
+openxlsx::read.xlsx("ESA_JL.xlsx") |> 
+   filter(`ESA.Categ` != "NaN") |> 
+   group_by(`5-micron.bin`) |> 
+   arrange(`5-micron.bin`,`ESA.Area.8hrs`) |> 
+   mutate(`% of Sensors` = row_number()/n()) |>
+   ungroup() |> 
+   ggplot(aes(x = `% of Sensors`, y = `ESA.Area.8hrs`, color = `5-micron.bin`)) + 
+   geom_point() +
+   geom_line() +
+   scale_y_reverse("ESA Area",limits = c(0,-5)) +
+   scale_x_continuous(labels = scales::label_percent(),
+                     breaks = seq(0,1,0.2)) +
+   theme_bw() +
+   labs(title = md("ESA Area 1~8 Hours")) +
+   theme(panel.grid.minor.y = element_blank(),legend.position = "bottom",plot.title = element_text(hjust = 0.5)) +
+   annotate(
+    geom = "label", x = 0.865, y = -3.5,
+    label = "Severe",
+    hjust = "left", color = "red"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -5, xend = 0.85, yend = -3, color = "red",
+    arrow = arrow(type = "closed")
+  ) +
+   annotate(
+    geom = "label", x = 0.865, y = -2.5,
+    label = "Moderate",
+    hjust = "left", color = "orange"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -3, xend = 0.85, yend = -2, color = "orange",
+    arrow = arrow(type = "closed")
+  ) +
+    annotate(
+    geom = "label", x = 0.865, y = -1.5,
+    label = "Minor",
+    hjust = "left", color = "#99CFFF"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.85, y = -2, xend = 0.85, yend = -1, color = "#99CFFF",
+    arrow = arrow(type = "closed")
+  ) +
+    annotate(
+    geom = "label", x = 0.88, y = -0.5,
+    label = "No ESA",
+    hjust = "left", color = "green"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 1, y = -1, xend = 1, yend = 0, color = "green",
+    arrow = arrow(type = "closed")
+  ) 
+ggsave("ESA.jpg")
+```
+
+```{r eval = params$analysis}
 #| label: ESA summary plot
 #| fig-align: center
 esa_area(interpolate = F) |>
